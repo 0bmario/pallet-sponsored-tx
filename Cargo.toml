@@ -7,7 +7,7 @@ edition = "2021"
 
 [workspace]
 default-members = ["pallets/template", "runtime"]
-members = ["node", "pallets/template", "runtime"]
+members = ["examples/subxt-sponsor-client", "exercises", "node", "pallets/*", "runtime"]
 resolver = "2"
 
 
@@ -52,6 +52,7 @@ zero-prefixed-literal = { level = "allow", priority = 2 }            # 00_1000_0
 [workspace.dependencies]
 parachain-template-runtime = { path = "./runtime", default-features = false }
 pallet-parachain-template = { path = "./pallets/template", default-features = false }
+pallet-sponsored-tx = { path = "./pallets/sponsored-tx", default-features = false }
 clap = { version = "4.5.13" }
 codec = { version = "3.7.5", default-features = false, package = "parity-scale-codec" }
 color-print = { version = "0.3.4" }
