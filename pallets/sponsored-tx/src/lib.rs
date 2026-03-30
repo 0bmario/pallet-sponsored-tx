@@ -377,7 +377,7 @@ pub mod pallet {
 		}
 
 		// After the actual fee has been slashed from the pending hold, any leftover estimate
-		// becomes available sponsor budget again.
+		// becomes available sponsor budget again: pending hold → free → budget hold.
 		pub(crate) fn restore_pending_to_budget(who: &T::AccountId) {
 			use polkadot_sdk::frame_support::traits::tokens::Precision;
 
@@ -386,6 +386,7 @@ pub mod pallet {
 				return;
 			}
 
+			// Step 1: release leftover from the pending hold (funds become free).
 			let released = match pallet_balances::Pallet::<T>::release(
 				&Self::pending_hold_reason(),
 				who,
@@ -408,6 +409,11 @@ pub mod pallet {
 				return;
 			}
 
+			// Step 2: re-escrow the released funds under the budget hold.
+			// In practice this should always succeed — we just freed exactly this amount.
+			// If it fails (e.g. external freeze exceeds total holds), the funds stay
+			// spendable rather than escrowed. Re-holding under pending_hold_reason is not
+			// an option: it would create orphaned pending state and block unregistration.
 			if let Err(error) =
 				pallet_balances::Pallet::<T>::hold(&Self::budget_hold_reason(), who, released)
 			{

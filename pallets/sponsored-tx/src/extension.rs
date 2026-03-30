@@ -150,7 +150,11 @@ where
 			self.tip.saturated_into(),
 		)
 		.weight(call);
-		base.saturating_add(T::DbWeight::get().reads_writes(2, 2))
+		if self.sponsor.is_some() {
+			base.saturating_add(T::DbWeight::get().reads_writes(2, 2))
+		} else {
+			base
+		}
 	}
 
 	fn validate(
@@ -320,7 +324,7 @@ where
 				Pallet::<T>::deposit_event(Event::SponsoredTransactionFeePaid {
 					sponsor,
 					signer,
-					actual_fee: charged_fee_with_tip,
+					actual_fee: charged_fee_with_tip.saturating_sub(actual_tip),
 					tip: actual_tip,
 				});
 
