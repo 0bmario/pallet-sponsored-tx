@@ -1,49 +1,40 @@
 ## prerequisites
 
 ```sh
+# just (command runner) - https://github.com/casey/just
+cargo install just
+
+# rust toolchain
 rustup install 1.88
 rustup default 1.88
-rustup target add wasm32-unknown-unknown --toolchain 1.88-aarch64-apple-darwin
-rustup component add rust-src --toolchain 1.88-aarch64-apple-darwin
+rustup target add wasm32-unknown-unknown --toolchain 1.88
+rustup component add rust-src --toolchain 1.88
+
+# nightly (for fmt/clippy)
+rustup install nightly
 ```
 
-## chain spec builder and omninode
+## setup
+
+Download binaries and build the runtime:
 
 ```sh
-cargo install --locked staging-chain-spec-builder@16.0.0
-cargo install --locked polkadot-omni-node@0.13.2
+just setup
 ```
 
-## compile the runtime
+## run the node locally
 
 ```sh
-cargo build --release --locked
+just run
 ```
 
-## verify the wasm
+This builds the runtime, generates a chain spec, and starts the omni-node in `--dev` mode (clean state on each restart).
+
+## development
 
 ```sh
-ls -la ./target/release/wbuild/parachain-template-runtime/
+just test          # run pallet tests
+just fmt           # format
+just clippy        # lint
+just --list        # see all commands
 ```
-
-# Run the node locally
-
-- generate chain spec:
-
-```sh
-chain-spec-builder create -t development \
---relay-chain paseo \
---para-id 1000 \
---runtime ./target/release/wbuild/parachain-template-runtime/parachain_template_runtime.compact.compressed.wasm \
-named-preset development
-```
-
-- Start the Omni Node with the generated chain spec:
-
-```sh
-polkadot-omni-node --chain ./chain_spec.json --dev
-```
-
-- The `--dev` option does the following:
-  - Deletes all active data (keys, blockchain database, networking information) when stopped.
-  - Ensures a clean working state each time you restart the node.
