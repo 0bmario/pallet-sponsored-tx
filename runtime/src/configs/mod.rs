@@ -52,7 +52,7 @@ use polkadot_runtime_common::{
 	xcm_sender::ExponentialPrice, BlockHashCount, SlowAdjustingFeeUpdate,
 };
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
-use sp_runtime::Perbill;
+use sp_runtime::{traits::Convert, Perbill};
 use sp_version::RuntimeVersion;
 use xcm::latest::prelude::{AssetId, BodyId};
 
@@ -180,6 +180,7 @@ impl pallet_balances::Config for Runtime {
 parameter_types! {
 	/// Relay Chain `TransactionByteFee` / 10
 	pub const TransactionByteFee: Balance = 10 * MICRO_UNIT;
+	pub const MaxSponsoredCallers: u32 = 32;
 }
 
 impl pallet_transaction_payment::Config for Runtime {
@@ -190,6 +191,25 @@ impl pallet_transaction_payment::Config for Runtime {
 	type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Self>;
 	type OperationalFeeMultiplier = ConstU8<5>;
 	type WeightInfo = ();
+}
+
+pub struct SponsorshipHoldReasonConverter;
+
+impl Convert<pallet_sponsored_tx::HoldReason, RuntimeHoldReason>
+	for SponsorshipHoldReasonConverter
+{
+	fn convert(reason: pallet_sponsored_tx::HoldReason) -> RuntimeHoldReason {
+		RuntimeHoldReason::SponsoredTx(reason)
+	}
+}
+
+impl pallet_sponsored_tx::Config for Runtime {
+	type RuntimeEvent = RuntimeEvent;
+	/// Fees are burned, matching the runtime's regular tx fee handling (FungibleAdapter<_, ()>).
+	type FeeDestination = ();
+	type HoldReasonConverter = SponsorshipHoldReasonConverter;
+	type MaxAllowedCallers = MaxSponsoredCallers;
+	type WeightInfo = pallet_sponsored_tx::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_sudo::Config for Runtime {

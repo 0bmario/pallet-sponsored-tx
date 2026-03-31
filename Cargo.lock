@@ -10083,6 +10083,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-sponsored-tx"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "parity-scale-codec",
+ "polkadot-sdk",
+ "polkadot-sdk-frame",
+ "scale-info",
+]
+
+[[package]]
 name = "pallet-staking"
 version = "45.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10605,6 +10616,7 @@ dependencies = [
  "hex-literal",
  "log",
  "pallet-parachain-template",
+ "pallet-sponsored-tx",
  "parity-scale-codec",
  "polkadot-sdk",
  "scale-info",
