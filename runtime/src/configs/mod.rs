@@ -205,6 +205,7 @@ impl Convert<pallet_sponsored_tx::HoldReason, RuntimeHoldReason>
 
 impl pallet_sponsored_tx::Config for Runtime {
 	type RuntimeEvent = RuntimeEvent;
+	/// Fees are burned, matching the runtime's regular tx fee handling (FungibleAdapter<_, ()>).
 	type FeeDestination = ();
 	type HoldReasonConverter = SponsorshipHoldReasonConverter;
 	type MaxAllowedCallers = MaxSponsoredCallers;

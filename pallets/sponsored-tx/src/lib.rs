@@ -309,13 +309,17 @@ pub mod pallet {
 			Self::ensure_registered(&sponsor)?;
 			ensure!(Self::pending_on_hold(&sponsor).is_zero(), Error::<T>::PendingBudgetNotEmpty);
 
+			// Release the full budget hold so the sponsor recovers their funds.
+			// `Exact` is deliberate: `budget` comes from `balance_on_hold` read above, so the
+			// held amount must match. A mismatch would signal a broken invariant, in that case
+			// we must fail rather than silently orphan held funds by removing the sponsor record.
 			let budget = Self::budget_on_hold(&sponsor);
 			if !budget.is_zero() {
-				let _ = pallet_balances::Pallet::<T>::release(
+				pallet_balances::Pallet::<T>::release(
 					&Self::budget_hold_reason(),
 					&sponsor,
 					budget,
-					polkadot_sdk::frame_support::traits::tokens::Precision::BestEffort,
+					polkadot_sdk::frame_support::traits::tokens::Precision::Exact,
 				)?;
 			}
 			Sponsors::<T>::remove(&sponsor);

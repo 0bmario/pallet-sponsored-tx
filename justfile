@@ -7,7 +7,7 @@ os := `uname -s | tr '[:upper:]' '[:lower:]'`
 arch := `uname -m`
 
 polkadot_sdk_base := "https://github.com/paritytech/polkadot-sdk/releases/download/" + polkadot_version + "/"
-darwin_suffix := if os == "darwin" { "-aarch64-apple-darwin" } else { "" }
+darwin_suffix := if os == "darwin" { if arch == "aarch64" { "-aarch64-apple-darwin" } else { "" } } else { "" }
 
 default:
     @just --list
@@ -40,7 +40,9 @@ _download BIN URL:
         exit 0
     fi
     echo "Downloading {{BIN}}..."
-    curl -L -o .bin/{{BIN}} "{{URL}}"
+    trap 'rm -f .bin/{{BIN}}.tmp' EXIT
+    curl --fail -L -o .bin/{{BIN}}.tmp "{{URL}}"
+    mv .bin/{{BIN}}.tmp .bin/{{BIN}}
     chmod +x .bin/{{BIN}}
     echo "{{BIN}} downloaded to .bin/{{BIN}}"
 
@@ -61,7 +63,8 @@ chain-spec: download-binaries build
 run: chain-spec
     .bin/polkadot-omni-node --chain ./chain_spec.json --dev
 
-# Full setup: download binaries + build
+# Full setup: download binaries + build + symlinks
 setup: download-binaries build
+    @ln -sf AGENTS.md CLAUDE.md
     @echo ""
     @echo "Setup complete! Run 'just run' to start the node."
