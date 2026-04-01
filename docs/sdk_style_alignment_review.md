@@ -136,56 +136,30 @@ That is directionally aligned with SDK test style.
 
 ## Main Style Gaps To Fix In A Follow-Up Pass
 
-### 1. Missing Crate-Level Documentation
+### 1. Crate-Level Documentation Is Now In Place
 
-Current gap:
+Current state:
 
-- `pallets/sponsored-tx/src/lib.rs` starts directly with `#![cfg_attr(...)]`
-- there is no crate-level `//!` overview
-- there is no explanation of terminology such as sponsor, budget hold, pending hold, or sponsored payment path
+- `pallets/sponsored-tx/src/lib.rs` now opens with crate-level `//!` documentation
+- the overview explains the pallet API, budget model, transaction extension, and V1 scope
+- the top-level docs now frame the code the way SDK reviewers expect
 
-Why it matters:
+Follow-up:
 
-- this is the first thing a reviewer sees
-- SDK pallets rely on these top-level docs to frame the code
-- this pallet has non-trivial semantics and needs that context
+- keep the crate docs in sync as the pallet evolves
+- eventually enforce the docs bar with `#[deny(missing_docs)]` when the crate is ready
 
-Recommendation:
+### 2. Public Types And Most Public API Are Now Documented
 
-- add crate-level docs in the style of `pallet-meta-tx` and `pallet-transaction-payment`
-- include:
-  - overview
-  - pallet API
-  - implementation details
-  - settlement model
-  - first-party client scope
+Current state:
 
-### 2. Missing Documentation On Public Types And Public API
+- `SponsorPolicy`, `SponsorState`, `SponsoredChargeTransactionPayment`, the key helper methods, config items, storage, events, errors, and dispatchables are now documented
+- generated docs and source reading are materially better than in the original review snapshot
 
-Current gap:
+Remaining gap:
 
-- `SponsorPolicy`
-- `SponsorState`
-- `SponsoredChargeTransactionPayment`
-- public helper methods like `new`, `tip`, and `sponsor`
-- config associated types
-- storage item `Sponsors`
-- event variants
-- error variants
-- dispatchables
-
-are mostly undocumented.
-
-Why it matters:
-
-- FRAME pallets are consumed as public runtime components
-- public docs are part of the API quality bar
-- the event and error surface should be readable without reverse-engineering implementation
-
-Recommendation:
-
-- add doc comments to every public type and public pallet item
-- use short, direct docs, not long prose everywhere
+- documentation quality is still convention-based rather than compiler-enforced
+- a future cleanup pass can tighten any remaining helper/internal API docs once the public surface settles
 
 ### 3. Extension Lifecycle Needs Explicit Invariant Comments
 
@@ -227,21 +201,16 @@ Recommendation:
 - prefer the familiar `frame_support::pallet_prelude::*` and `frame_system::pallet_prelude::*` style locally where practical
 - keep crate-root exports and helper aliases documented
 
-### 5. Events And Errors Need Per-Variant Docs
+### 5. Events And Errors Are Documented
 
-Current gap:
+Current state:
 
-Event and error variants are readable by name, but they do not carry SDK-style doc comments.
+- event and error variants now carry per-variant doc comments
+- the metadata-facing surface is much closer to normal SDK expectations
 
-Why it matters:
+Follow-up:
 
-- SDK pallets usually document what each event means and what each error condition represents
-- this matters for downstream users, docs, and generated metadata readers
-
-Recommendation:
-
-- add one-line docs to each event and error variant
-- reserve longer comments for the few variants that need explanation
+- keep new variants documented as they are introduced
 
 ### 6. Benchmarking And Weights Are Structurally Present But Not Yet SDK-Grade
 
@@ -277,15 +246,12 @@ Recommendation:
 
 ## Recommended Cleanup Order
 
-This is the order I would use in a dedicated style pass.
+This is the order I would use in the next dedicated style/completeness pass.
 
-1. Add crate-level docs to `pallets/sponsored-tx/src/lib.rs`.
-2. Add doc comments to public types in `types.rs` and `extension.rs`.
-3. Add doc comments to config items, storage, events, errors, and dispatchables in `lib.rs`.
-4. Add targeted invariant comments in `extension.rs` around validate, prepare, and post-dispatch.
-5. Tighten pallet-module import style where it improves readability.
-6. Improve the example’s top-level explanatory comments.
-7. Finish benchmarking and replace manual weights with benchmark-derived weights.
+1. Add `#[deny(missing_docs)]` once the crate is ready to enforce it.
+2. Tighten pallet-module import style where it improves readability.
+3. Improve the example’s top-level explanatory comments if it grows beyond the minimal happy path.
+4. Finish benchmarking and replace manual weights with benchmark-derived weights.
 
 ## What Not To Change In The Name Of Style
 
@@ -301,13 +267,12 @@ Those are design decisions. The style pass should make them easier to understand
 
 ## Bottom Line
 
-The implementation already has the right macro-level structure for a FRAME pallet. The main gap is not architecture. The main gap is that the code does not yet explain itself with the same level of documentation and invariant-signposting that SDK pallets usually provide.
+The implementation already has the right macro-level structure for a FRAME pallet. The documentation and invariant-signposting gaps from the original review are much smaller now. The main remaining completeness gap is benchmark- and weight-related rather than architectural.
 
 In practice, the best next step is a non-functional cleanup pass focused on:
 
-- crate docs
-- public API docs
-- invariant comments
 - benchmark and weight completeness
+- docs enforcement
+- any remaining style-only import cleanup
 
 That is what will make `pallet-sponsored-tx` feel much closer to a native SDK pallet.

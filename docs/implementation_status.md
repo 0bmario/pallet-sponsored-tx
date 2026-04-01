@@ -16,6 +16,7 @@
 - `SponsoredChargeTransactionPayment<T>` with payload: `tip` + `sponsor: Option<AccountId>`
 - `sponsor = None` falls back to normal payment path
 - `sponsor = Some(...)` activates sponsored validation (policy, allowlist, fee cap, budget check) and settlement (slash pending, route credit, restore unused to budget)
+- Sponsored post-dispatch now returns a non-zero placeholder weight for settlement overhead
 
 ### Runtime (`runtime/src/configs/mod.rs`)
 
@@ -23,15 +24,17 @@
 - `RuntimeHoldReason` includes composite enum variant
 - Custom hold reason converter
 - `MaxSponsoredCallers` constant
+- `FeeDestination = ()`, so sponsored fees still burn alongside regular native fees in this pass
 
 ### Client Example (`examples/subxt-sponsor-client/`)
 
 - Custom Subxt extension encoder for `SponsoredChargeTransactionPayment`
 - Registers Alice as sponsor, allowlists Bob/Charlie, submits sponsored `System.remark`
+- Workspace-integrated and compile-checkable via `cargo check -p sponsored-tx-subxt-example`
 
 ### Tests (`pallets/sponsored-tx/src/tests.rs`)
 
-- Sponsor lifecycle, validation, settlement, unsponsored fallback
+- Sponsor lifecycle, policy updates, validation rejection paths, settlement, tip handling, sequential same-sponsor flows, pending-budget guard, unsponsored fallback
 
 ## Design Rationale
 
@@ -52,4 +55,5 @@ Polkadot.js Apps confirmed correct storage and event decoding.
 1. **Benchmarking deferred** — placeholder weights in `weights.rs`, no benchmark-derived weights yet.
 2. **No generic wallet support** — write-side submission requires the custom Subxt client. Read-side works in Polkadot.js Apps.
 3. **No broader policy engine** — no rate limits, call filters, sponsor discovery, multi-sponsor, cooldown withdrawals, or asset-based fees. Intentional V1 scope cut.
-4. **Example is minimal** — proves the path but not operator-hardened or idempotent.
+4. **Fee routing unchanged** — sponsored fees intentionally keep the runtime's current burned-fee behavior in this hardening pass.
+5. **Example is minimal** — proves the path but not operator-hardened or idempotent.

@@ -6,9 +6,9 @@ repository = "https://github.com/paritytech/polkadot-sdk-parachain-template.git"
 edition = "2021"
 
 [workspace]
-default-members = ["pallets/template", "runtime"]
+default-members = ["pallets/template", "pallets/sponsored-tx", "runtime"]
 # members = ["examples/subxt-sponsor-client", "exercises", "node", "pallets/*", "runtime"]
-members = ["node", "pallets/*", "runtime"]
+members = ["examples/subxt-sponsor-client", "node", "pallets/*", "runtime"]
 resolver = "2"
 
 

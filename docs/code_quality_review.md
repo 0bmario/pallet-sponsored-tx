@@ -22,11 +22,9 @@ The codebase is clean, well-structured, and correctly implements its stated V1 s
 
 ### Areas for Improvement
 
-1. **Public types lack doc comments.** `SponsorPolicy`, `SponsorState` fields, and several `Config` associated types are undocumented. SDK pallets typically document every public item.
+1. **Documentation enforcement is still manual.** The pallet now has crate docs and public-item docs in the important places, but it still does not use `#[deny(missing_docs)]` to keep that bar from regressing.
 
-2. **No `#[deny(missing_docs)]`.** Adding this would enforce documentation coverage as the pallet grows.
-
-3. **Extension `Debug` impls are feature-gated.** The `#[cfg(not(feature = "std"))]` Debug impl returns `Ok(())`, which means no-std builds produce empty debug output. This is common in Substrate but worth noting for debugging on-chain issues.
+2. **Extension `Debug` impls are feature-gated.** The `#[cfg(not(feature = "std"))]` Debug impl returns `Ok(())`, which means no-std builds produce empty debug output. This is common in Substrate but worth noting for debugging on-chain issues.
 
 ---
 
@@ -38,31 +36,25 @@ The codebase is clean, well-structured, and correctly implements its stated V1 s
 |---|---|
 | `register_sponsor_holds_budget` | Registration places budget on hold |
 | `register_requires_non_empty_unique_allowlist` | Empty and duplicate allowlists rejected |
+| `register_requires_non_zero_budget` | Zero-budget registration is rejected |
 | `can_increase_decrease_pause_resume_and_unregister` | Full sponsor lifecycle |
+| `set_policy_replaces_allowlist_and_fee_cap` | Policy replacement updates validation behavior |
 | `sponsored_validation_accepts_allowlisted_signer` | Happy-path validation |
+| `sponsored_validation_rejects_paused_sponsor` | Paused sponsors fail validation |
 | `sponsored_validation_rejects_non_allowlisted_signer` | Allowlist enforcement |
-| `sponsored_prepare_moves_budget_to_pending_and_post_dispatch_restores_refund` | Full prepare → dispatch → post_dispatch lifecycle |
+| `sponsored_validation_rejects_fee_cap_exceeded` | Per-tx fee cap is enforced |
+| `sponsored_validation_rejects_insufficient_budget` | Validation rejects over-budget sponsorship |
+| `sponsored_prepare_and_post_dispatch_exactly_settle_refund_and_report_weight` | Full prepare → dispatch → post_dispatch lifecycle with exact accounting |
+| `sponsored_post_dispatch_splits_tip_and_fee_in_event` | Tip handling and event fields are verified precisely |
+| `unregister_rejects_when_pending_budget_is_not_empty` | Pending-budget guard is enforced |
+| `multiple_sponsored_transactions_preserve_budget_accounting` | Sequential same-sponsor settlements preserve hold accounting |
 | `unsponsored_path_keeps_signer_payment_behavior` | Fallback to normal payment |
 
 ### Gaps
 
-1. **No test for inactive sponsor rejection.** Validation should fail for `active = false`. The pause/resume lifecycle test covers the dispatchable but not the extension validation against a paused sponsor.
+1. **No benchmark-backed coverage yet.** Dispatchable and extension weights are still placeholder-backed, so runtime weight realism is not exercised by tests.
 
-2. **No test for fee cap exceeded.** The `FeeCapExceeded` validation error is not exercised in tests.
-
-3. **No test for insufficient budget.** The `InsufficientBudget` validation error at the extension level is not tested (only the dispatchable `InsufficientAvailableBudget` is indirectly covered via `decrease_budget`).
-
-4. **No test for concurrent sponsored transactions.** Two in-flight sponsored txs from different callers against the same sponsor could interact through the budget/pending holds. This should be tested.
-
-5. **No test for `set_policy`.** The `set_policy` dispatchable is not directly tested (only `register_sponsor` validates policy).
-
-6. **No test for sponsored transaction with a tip.** All tests use `tip = 0`. The tip-splitting logic in `post_dispatch_details` (lines 310-315) is untested.
-
-7. **No test for the `SponsoredTransactionFeePaid` event fields.** The event is asserted in one test but the actual fee and tip values should be verified more precisely against computed expectations.
-
-8. **No test for unregister with pending budget.** The `PendingBudgetNotEmpty` error path is not tested.
-
-9. **No test for zero-budget registration.** The `ZeroBudget` error on `register_sponsor` is not tested.
+2. **No end-to-end node test for the example client.** The Subxt example is now workspace-checkable, but the repo still does not automate the `just run` + submit + event verification path.
 
 ---
 
@@ -80,7 +72,7 @@ The codebase is clean, well-structured, and correctly implements its stated V1 s
 
 2. **Zero proof size** means PoV (Proof of Validity) metering is not tracked. On a parachain, PoV is a critical constraint. Under-counting PoV can cause blocks to exceed relay chain limits.
 
-3. **Extension weight** (`weight()` in extension.rs) adds `reads_writes(2, 2)` on top of the base `ChargeTransactionPayment` weight. The sponsored post_dispatch returns `Weight::zero()`, under-counting settlement overhead.
+3. **Extension weight is still placeholder-backed.** The sponsored path now returns a non-zero post-dispatch database weight, but it is still hand-written until dedicated benchmarks exist.
 
 ### Recommendation
 
@@ -99,7 +91,7 @@ Benchmarks should be implemented before production deployment. The `#[benchmarks
 
 In both the test mock and the production runtime, `FeeDestination` is set to `()`. This means all sponsored fees (and tips) are burned — they go to no one.
 
-For production, this should route to a meaningful destination:
+This hardening pass intentionally keeps that behavior so sponsored and unsponsored native fees remain aligned. For production, this should route to a meaningful destination:
 - `DealWithFees` (split between treasury and block author)
 - `ToAuthor` (block author receives all fees)
 - A custom split
@@ -128,6 +120,7 @@ This will automatically pick up benchmark-generated weights once they exist.
 - Correctly implements the custom `TransactionExtension` trait for Subxt.
 - `SponsoredParamsBuilder` provides a clean ergonomic API.
 - Good module-level doc comment explaining why the example exists.
+- Now compile-checks cleanly as a workspace package.
 
 ### Gaps
 
@@ -143,22 +136,21 @@ This will automatically pick up benchmark-generated weights once they exist.
 | Item | Status | Notes |
 |---|---|---|
 | Core pallet logic | Done | Correct and clean |
-| Transaction extension | Done | Correct with minor weight gap |
+| Transaction extension | Done | Correct with placeholder post-dispatch settlement weight |
 | Runtime integration | Done | Wired correctly |
-| Unit tests | Partial | Core flows covered, edge cases missing (see Gaps) |
+| Unit tests | Good | Core flows and key edge cases covered; e2e coverage still missing |
 | Benchmarks | Not started | Placeholder file only |
 | Generated weights | Not started | Using manual placeholders |
 | Proof size in weights | Missing | All weights have zero PoV |
-| Fee destination | Needs config | Currently burns all fees |
-| Public API docs | Partial | Crate docs exist, per-item docs missing |
+| Fee destination | Intentional for now | Still burns fees to match current runtime economics |
+| Public API docs | Good | Crate docs and core public items are documented |
 | Client example | Done | Minimal but functional |
 | Rate limiting | Not in scope | Documented as V1 scope cut |
 | Call filtering | Not in scope | Documented as V1 scope cut |
 
 ## Recommended Next Steps (Priority Order)
 
-1. **Fix `FeeDestination`** — route sponsored fees to treasury/author instead of burning.
-2. **Implement benchmarks** — replace placeholder weights with benchmark-derived values including proof size.
-3. **Add missing test cases** — inactive sponsor, fee cap exceeded, insufficient budget, concurrent txs, tip handling, pending-not-empty unregister.
-4. **Return non-zero weight from sponsored `post_dispatch_details`** — account for settlement overhead.
-5. **Add per-item doc comments** — public types, events, errors, config items.
+1. **Implement benchmarks** — replace placeholder weights with benchmark-derived values including proof size.
+2. **Decide runtime-wide fee routing** — if the chain moves beyond learning/demo use, change regular and sponsored fee routing together rather than only one path.
+3. **Add e2e coverage for the example path** — automate the local node + Subxt happy-path verification.
+4. **Consider `#[deny(missing_docs)]`** — turn the current documentation bar into an enforced one.

@@ -13,6 +13,6 @@ FRAME pallet for sponsor-paid transaction fees on Polkadot SDK. Learning project
 - Formatting requires nightly: `just fmt` (or `cargo +nightly fmt`).
 - `docs/security_review.md` is the source of truth for known issues and accepted trade-offs.
 - Hold accounting is the critical invariant — any change to hold/release/slash flows must be reviewed against S-01 and S-02.
-- Weights: the sponsored post-dispatch path returns `Weight::zero()` (S-07) — fix before production.
+- Weights: the sponsored post-dispatch path now uses a non-zero placeholder DB weight; benchmark-derived pallet and extension weights are still pending before production.
 - After any change to pallet logic, hold flows, extension behavior, or security properties, update the relevant doc in `docs/` (especially `security_review.md`). Docs must stay in sync with code.
 - If you discover a new critical design decision, invariant, or footgun, add it to this AGENTS.md so future sessions benefit.

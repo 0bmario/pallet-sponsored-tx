@@ -23,6 +23,9 @@ use polkadot_sdk::{
 
 type FeeBalanceOf<T> = <<T as pallet_transaction_payment::Config>::OnChargeTransaction as
 	pallet_transaction_payment::OnChargeTransaction<T>>::Balance;
+// Keep the placeholder settlement accounting explicit until dedicated benchmarks replace it.
+const SPONSORED_POST_DISPATCH_READS: u64 = 4;
+const SPONSORED_POST_DISPATCH_WRITES: u64 = 4;
 
 #[repr(u8)]
 enum InvalidSponsoredTransaction {
@@ -271,6 +274,11 @@ where
 				)
 			},
 			SponsoredPre::Sponsored { sponsor, signer, estimated_fee_with_tip, tip } => {
+				// Placeholder settlement weight until dedicated extension benchmarks land.
+				// This covers the current path shape: slash pending hold, inspect/restore any
+				// remainder, and deposit the settlement event.
+				let settlement_weight = T::DbWeight::get()
+					.reads_writes(SPONSORED_POST_DISPATCH_READS, SPONSORED_POST_DISPATCH_WRITES);
 				let mut charged_fee_with_tip: BalanceOf<T> =
 					pallet_transaction_payment::Pallet::<T>::compute_actual_fee(
 						len as u32,
@@ -328,7 +336,7 @@ where
 					tip: actual_tip,
 				});
 
-				Ok(Weight::zero())
+				Ok(settlement_weight)
 			},
 		}
 	}

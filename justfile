@@ -20,6 +20,10 @@ build:
 test:
     cargo test -p pallet-sponsored-tx
 
+# Build-check the Subxt example client
+example-check:
+    cargo check -p sponsored-tx-subxt-example
+
 # Run pallet tests with logs
 test-verbose:
     RUST_LOG=debug cargo test -p pallet-sponsored-tx -- --nocapture
