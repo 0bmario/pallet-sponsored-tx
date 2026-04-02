@@ -35,7 +35,9 @@ This builds the runtime, generates a chain spec, and starts the omni-node in `--
 ```sh
 just test          # run pallet tests
 just example-check # compile-check the Subxt example client
+just benchmark-sponsored-tx # regenerate pallet dispatchable weights
 just fmt           # format
-just clippy        # lint
+just clippy        # lint without editing files
+just clippy-fix    # apply Clippy fixes explicitly
 just --list        # see all commands
 ```

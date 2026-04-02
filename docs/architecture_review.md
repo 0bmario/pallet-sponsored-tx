@@ -132,7 +132,7 @@ validate → prepare → dispatch → post_dispatch
 - `MaxSponsoredCallers = 32` — reasonable for V1.
 - `FeeDestination = ()` — fees are burned. See Code Quality Review for production implications.
 - `SponsorshipHoldReasonConverter` maps pallet hold reasons to `RuntimeHoldReason`.
-- Weights use `pallet_sponsored_tx::weights::SubstrateWeight<Runtime>` (placeholder values).
+- Weights use `pallet_sponsored_tx::weights::SubstrateWeight<Runtime>` with benchmark-derived dispatchable values; the sponsored extension post-dispatch weight is still placeholder-backed.
 
 ## Client Integration
 

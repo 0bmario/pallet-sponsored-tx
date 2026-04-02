@@ -194,7 +194,9 @@ pub mod pallet {
 	impl<T: Config> Pallet<T> {
 		/// Register the caller as a sponsor and place the initial budget on hold.
 		#[pallet::call_index(0)]
-		#[pallet::weight(<T as crate::Config>::WeightInfo::register_sponsor())]
+		#[pallet::weight(<T as crate::Config>::WeightInfo::register_sponsor(
+			policy.allowed_callers.len() as u32,
+		))]
 		pub fn register_sponsor(
 			origin: OriginFor<T>,
 			initial_budget: BalanceOf<T>,
@@ -255,7 +257,9 @@ pub mod pallet {
 
 		/// Replace the caller's sponsorship policy.
 		#[pallet::call_index(3)]
-		#[pallet::weight(<T as crate::Config>::WeightInfo::set_policy())]
+		#[pallet::weight(<T as crate::Config>::WeightInfo::set_policy(
+			policy.allowed_callers.len() as u32,
+		))]
 		pub fn set_policy(origin: OriginFor<T>, policy: SponsorPolicy<T>) -> DispatchResult {
 			let sponsor = ensure_signed(origin)?;
 			Self::ensure_valid_policy(&policy)?;

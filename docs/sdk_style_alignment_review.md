@@ -212,22 +212,23 @@ Follow-up:
 
 - keep new variants documented as they are introduced
 
-### 6. Benchmarking And Weights Are Structurally Present But Not Yet SDK-Grade
+### 6. Dispatchable Benchmarking And Weights Are Now SDK-Grade
 
-Current gap:
+Current state:
 
-- `benchmarking.rs` explicitly says benchmarking is deferred
-- `weights.rs` contains manual placeholder values
+- `benchmarking.rs` now contains FRAME v2 benchmarks for all seven dispatchables
+- `weights.rs` is generated from benchmark output and includes proof-size estimates
+- `register_sponsor` and `set_policy` now expose the allowlist-length component explicitly in the weight interface
 
-Why it matters:
+Remaining gap:
 
-- the file layout is correct
-- the implementation is not yet at the normal SDK completeness bar
+- the sponsored extension settlement path still uses a hand-written placeholder post-dispatch weight
 
 Recommendation:
 
-- treat benchmark coverage and generated weights as a required style-completion step
-- do not leave manual weights as the long-term state
+- keep the checked-in weights regenerated through `just benchmark-sponsored-tx`
+- keep using the repo-local Handlebars template rather than the CLI default output
+- treat extension benchmarking as the remaining completeness step
 
 ### 7. The Example Client Is Useful But Under-Documented
 
@@ -251,7 +252,7 @@ This is the order I would use in the next dedicated style/completeness pass.
 1. Add `#[deny(missing_docs)]` once the crate is ready to enforce it.
 2. Tighten pallet-module import style where it improves readability.
 3. Improve the example’s top-level explanatory comments if it grows beyond the minimal happy path.
-4. Finish benchmarking and replace manual weights with benchmark-derived weights.
+4. Benchmark the sponsored extension settlement path and keep the generated dispatchable weights current.
 
 ## What Not To Change In The Name Of Style
 
@@ -267,11 +268,11 @@ Those are design decisions. The style pass should make them easier to understand
 
 ## Bottom Line
 
-The implementation already has the right macro-level structure for a FRAME pallet. The documentation and invariant-signposting gaps from the original review are much smaller now. The main remaining completeness gap is benchmark- and weight-related rather than architectural.
+The implementation already has the right macro-level structure for a FRAME pallet. The documentation and invariant-signposting gaps from the original review are much smaller now. The main remaining completeness gap is the custom extension settlement weight rather than the pallet architecture or dispatchable benchmarking.
 
 In practice, the best next step is a non-functional cleanup pass focused on:
 
-- benchmark and weight completeness
+- extension-weight completeness
 - docs enforcement
 - any remaining style-only import cleanup
 

@@ -26,6 +26,14 @@
 - `MaxSponsoredCallers` constant
 - `FeeDestination = ()`, so sponsored fees still burn alongside regular native fees in this pass
 
+### Benchmarking & Weights
+
+- FRAME v2 dispatchable benchmarks for all seven pallet calls
+- Runtime benchmark registry includes `pallet_sponsored_tx`
+- `weights.rs` is generated from benchmark output with non-zero proof-size estimates
+- `register_sponsor` and `set_policy` weights scale with allowlist length
+- Supported regeneration path: `just benchmark-sponsored-tx`
+
 ### Client Example (`examples/subxt-sponsor-client/`)
 
 - Custom Subxt extension encoder for `SponsoredChargeTransactionPayment`
@@ -52,7 +60,7 @@ Polkadot.js Apps confirmed correct storage and event decoding.
 
 ## Known Gaps
 
-1. **Benchmarking deferred** — placeholder weights in `weights.rs`, no benchmark-derived weights yet.
+1. **Extension benchmarking deferred** — dispatchable weights are benchmark-derived, but the sponsored post-dispatch settlement path still uses a placeholder database weight until dedicated extension benchmarks exist.
 2. **No generic wallet support** — write-side submission requires the custom Subxt client. Read-side works in Polkadot.js Apps.
 3. **No broader policy engine** — no rate limits, call filters, sponsor discovery, multi-sponsor, cooldown withdrawals, or asset-based fees. Intentional V1 scope cut.
 4. **Fee routing unchanged** — sponsored fees intentionally keep the runtime's current burned-fee behavior in this hardening pass.

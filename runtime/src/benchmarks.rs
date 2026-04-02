@@ -26,6 +26,7 @@
 polkadot_sdk::frame_benchmarking::define_benchmarks!(
 	[frame_system, SystemBench::<Runtime>]
 	[pallet_balances, Balances]
+	[pallet_sponsored_tx, SponsoredTx]
 	[pallet_session, SessionBench::<Runtime>]
 	[pallet_timestamp, Timestamp]
 	[pallet_message_queue, MessageQueue]

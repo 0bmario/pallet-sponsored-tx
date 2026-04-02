@@ -1,4 +1,38 @@
 //! Transaction extension for native sponsored fee payment.
+//!
+//! This module implements [`TransactionExtension`] via
+//! [`SponsoredChargeTransactionPayment`]. The extension carries a `tip` and an optional
+//! `sponsor: Option<AccountId>` in the signed payload.
+//!
+//! ## Lifecycle
+//!
+//! `TransactionExtension` defines a four-phase lifecycle for every extrinsic:
+//!
+//! 1. **`validate`** — Pool and block-import validation. Read-only checks that decide whether the
+//!    transaction is acceptable. Returns a [`Val`](`SponsoredVal`) that captures everything the
+//!    next phase needs (sponsor identity, worst-case fee, signer).
+//!
+//! 2. **`prepare`** — Runs once, immediately before dispatch, with mutable state access. Converts
+//!    `Val` into [`Pre`](`SponsoredPre`) and performs any state changes that must be committed
+//!    before the call executes (here: moving the estimated fee from the sponsor's budget hold into
+//!    a per-transaction pending hold).
+//!
+//! 3. **dispatch** — The call itself. The extension is not involved.
+//!
+//! 4. **`post_dispatch_details`** — Runs after dispatch regardless of success/failure. Receives
+//!    `Pre` and the actual execution results. Settles the real fee (slash from pending hold),
+//!    restores any unused estimate back to budget hold, routes fee and tip credit, and returns the
+//!    weight consumed by the settlement logic itself.
+//!
+//! ## Sponsored vs. Unsponsored
+//!
+//! When `sponsor = None`, the extension delegates entirely to
+//! [`ChargeTransactionPayment`](`pallet_transaction_payment::ChargeTransactionPayment`) at
+//! every phase — normal signer-pays-fee semantics are preserved unchanged.
+//!
+//! When `sponsor = Some(account)`, the extension runs its own sponsored path: validate checks
+//! sponsor policy and budget, prepare escrows funds via the two-hold model (see crate-level
+//! docs), and post_dispatch settles against the sponsor instead of the signer.
 
 use crate::{pallet::Event, BalanceOf, Config, FeeCreditOf, Pallet};
 use codec::{Decode, DecodeWithMemTracking, Encode};
@@ -24,8 +58,10 @@ use polkadot_sdk::{
 type FeeBalanceOf<T> = <<T as pallet_transaction_payment::Config>::OnChargeTransaction as
 	pallet_transaction_payment::OnChargeTransaction<T>>::Balance;
 // Keep the placeholder settlement accounting explicit until dedicated benchmarks replace it.
-const SPONSORED_POST_DISPATCH_READS: u64 = 4;
-const SPONSORED_POST_DISPATCH_WRITES: u64 = 4;
+// Actual post-dispatch I/O: slash pending (2r, 2w) + restore_pending_to_budget: read pending
+// (1r), release pending (2r, 2w), hold budget (2r, 2w) + deposit_event (0r, 1w).
+const SPONSORED_POST_DISPATCH_READS: u64 = 7;
+const SPONSORED_POST_DISPATCH_WRITES: u64 = 7;
 
 #[repr(u8)]
 enum InvalidSponsoredTransaction {
@@ -134,6 +170,11 @@ impl<T: Config> core::fmt::Debug for SponsoredPre<T> {
 	}
 }
 
+// The `weight()` function reports the extension's own overhead (validate + prepare I/O),
+// NOT the weight of the dispatched call. For the sponsored path this is hand-counted from the
+// storage accesses in validate and prepare; for the unsponsored path we delegate to the base
+// `ChargeTransactionPayment` weight. Post-dispatch settlement weight is returned separately
+// from `post_dispatch_details`.
 impl<T> TransactionExtension<T::RuntimeCall> for SponsoredChargeTransactionPayment<T>
 where
 	T: Config + Send + Sync,
@@ -145,18 +186,21 @@ where
 {
 	const IDENTIFIER: &'static str = "SponsoredChargeTransactionPayment";
 	type Implicit = ();
+	/// Intermediate validation state. See module-level docs for the lifecycle overview.
 	type Val = SponsoredVal<T>;
+	/// Pre-dispatch state carried into post-dispatch settlement.
 	type Pre = SponsoredPre<T>;
 
 	fn weight(&self, call: &T::RuntimeCall) -> Weight {
-		let base = pallet_transaction_payment::ChargeTransactionPayment::<T>::from(
-			self.tip.saturated_into(),
-		)
-		.weight(call);
 		if self.sponsor.is_some() {
-			base.saturating_add(T::DbWeight::get().reads_writes(2, 2))
+			// Sponsored validate+prepare: Sponsors read (1r) + budget_on_hold read (1r)
+			// + release budget hold (2r, 2w) + hold pending (2r, 2w).
+			T::DbWeight::get().reads_writes(6, 4)
 		} else {
-			base
+			pallet_transaction_payment::ChargeTransactionPayment::<T>::from(
+				self.tip.saturated_into(),
+			)
+			.weight(call)
 		}
 	}
 
@@ -329,10 +373,12 @@ where
 				// Whatever remains in the pending hold after slashing the actual fee becomes
 				// available sponsor budget again.
 				Pallet::<T>::restore_pending_to_budget(&sponsor);
+				// Match `pallet_transaction_payment::TransactionFeePaid` convention: `actual_fee`
+				// includes the tip so that `actual_fee = base_fee + tip`.
 				Pallet::<T>::deposit_event(Event::SponsoredTransactionFeePaid {
 					sponsor,
 					signer,
-					actual_fee: charged_fee_with_tip.saturating_sub(actual_tip),
+					actual_fee: charged_fee_with_tip,
 					tip: actual_tip,
 				});
 

@@ -127,15 +127,18 @@ With `MaxAllowedCallers = 32`, the worst case is ~496 comparisons, which is acce
 
 ---
 
-### S-07: Sponsored Post-Dispatch Weight Accounting (Low) — **Fixed**
+### S-07: Sponsored Extension Weight Accounting (Low) — **Fixed**
 
 **Location:** `extension.rs`
 
-**Description:** The sponsored post-dispatch path originally returned `Weight::zero()`, meaning the weight consumed by the settlement logic (slash, restore, event deposit) was not accounted for in the returned weight.
+**Description:** Two issues existed: (1) the sponsored post-dispatch path originally returned `Weight::zero()`, and (2) the extension `weight()` function added a small adder on top of the unsponsored `ChargeTransactionPayment` base weight, even though the sponsored path never calls `ChargeTransactionPayment::validate` or `::prepare`.
 
-**Resolution:** The sponsored path now returns a non-zero placeholder database weight derived from the current settlement path shape. This keeps post-dispatch charging aligned with the fact that sponsored settlement mutates storage after dispatch.
+**Resolution:**
 
-**Remaining Work:** This is still a placeholder until dedicated extension benchmarks exist. Benchmark-derived weights and proof size accounting remain the production target.
+- The extension `weight()` now branches explicitly: the sponsored path returns `reads_writes(6, 4)` (Sponsors read, budget_on_hold read, release budget hold, hold pending) instead of deriving from the unsponsored base.
+- The sponsored post-dispatch path returns a placeholder `reads_writes(7, 7)` derived from the actual settlement I/O: slash pending (2r, 2w), restore pending to budget (5r, 4w), deposit event (0r, 1w).
+
+**Remaining Work:** Dispatchable weights are benchmark-derived with proof-size accounting; the extension validate/prepare/post_dispatch paths still use hand-counted placeholder weights. Dedicated extension benchmarks are the production target.
 
 ---
 
@@ -191,7 +194,7 @@ An allowlisted caller could set a high tip (up to `max_fee_per_tx`) on every tra
 | S-04 | Informational | No rate limiting | Intentional V1 scope cut |
 | S-05 | Informational | No call filtering | Intentional V1 scope cut |
 | S-06 | Low | O(n^2) duplicate check | Acceptable at n <= 32 |
-| S-07 | Low | Sponsored post-dispatch weight accounting | **Fixed** — non-zero placeholder weight returned |
+| S-07 | Low | Sponsored extension weight accounting | **Fixed** — extension weight branches correctly; post-dispatch placeholder updated |
 | S-08 | Low | BestEffort release on unregister | **Fixed** — switched to Exact |
 | S-09 | Low | Tip inflation within fee cap | Acceptable with trusted callers |
 

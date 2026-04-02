@@ -2,7 +2,7 @@
 
 ## Overall Assessment
 
-The codebase is clean, well-structured, and correctly implements its stated V1 scope. The code reads like an experienced Substrate developer wrote it. The main gaps are in production readiness (benchmarks, weights, fee destination) rather than correctness.
+The codebase is clean, well-structured, and correctly implements its stated V1 scope. The code reads like an experienced Substrate developer wrote it. The main remaining gaps are in production readiness (extension benchmarking, fee destination, end-to-end automation) rather than correctness.
 
 ---
 
@@ -52,7 +52,7 @@ The codebase is clean, well-structured, and correctly implements its stated V1 s
 
 ### Gaps
 
-1. **No benchmark-backed coverage yet.** Dispatchable and extension weights are still placeholder-backed, so runtime weight realism is not exercised by tests.
+1. **The extension settlement path is still not benchmark-backed.** Dispatchable weights are now generated from FRAME benchmarks, but the custom sponsored post-dispatch logic still uses a placeholder database weight until dedicated extension benchmarks exist.
 
 2. **No end-to-end node test for the example client.** The Subxt example is now workspace-checkable, but the repo still does not automate the `just run` + submit + event verification path.
 
@@ -62,26 +62,26 @@ The codebase is clean, well-structured, and correctly implements its stated V1 s
 
 ### Current State
 
-- `benchmarking.rs` contains only a doc comment stating benchmarks are deferred.
-- `weights.rs` contains hand-written placeholder weights.
-- All weight values have **zero proof size** (`Weight::from_parts(N, 0)`).
+- `benchmarking.rs` now contains FRAME v2 benchmarks for all seven dispatchables.
+- `weights.rs` is generated from benchmark output via the repo-local template.
+- Dispatchable weights now include **non-zero proof size** estimates, and `register_sponsor` / `set_policy` scale with allowlist length.
+- The sponsored extension settlement path still uses a hand-written non-zero placeholder weight.
 
 ### Impact
 
-1. **Placeholder execution weights** may over- or under-charge. The values (8-20M ref_time) are reasonable estimates but not validated.
+1. **Dispatchable execution weights are now benchmark-derived.** This materially reduces under/over-charging risk for the pallet call surface and brings proof-size accounting into the checked-in weights.
 
-2. **Zero proof size** means PoV (Proof of Validity) metering is not tracked. On a parachain, PoV is a critical constraint. Under-counting PoV can cause blocks to exceed relay chain limits.
+2. **Extension settlement weight is still placeholder-backed.** The sponsored path returns a non-zero post-dispatch database weight, but it is still hand-written until dedicated extension benchmarks exist.
 
-3. **Extension weight is still placeholder-backed.** The sponsored path now returns a non-zero post-dispatch database weight, but it is still hand-written until dedicated benchmarks exist.
+3. **The benchmark regeneration path now depends on repo-local conventions.** `just benchmark-sponsored-tx` must keep using the checked-in Handlebars template because the pallet relies on a local `WeightInfo` trait contract rather than the CLI default output shape.
 
 ### Recommendation
 
-Benchmarks should be implemented before production deployment. The `#[benchmarks]` framework from `frame_benchmarking::v2` should be used. Priority benchmarks:
+Dispatchable benchmarking is now in place. Before production deployment, the next weight work should focus on:
 
-1. `register_sponsor` — varies with allowlist size
-2. `set_policy` — varies with allowlist size
-3. `unregister` — involves release
-4. `increase_budget` / `decrease_budget` — hold/release paths
+1. dedicated benchmarks for the sponsored extension settlement path
+2. keeping generated weights current through `just benchmark-sponsored-tx`
+3. rerunning the benchmark flow after any change to storage access patterns or policy-validation complexity
 
 ---
 
@@ -108,7 +108,7 @@ The runtime correctly references the pallet's weight implementation:
 ```rust
 type WeightInfo = pallet_sponsored_tx::weights::SubstrateWeight<Runtime>;
 ```
-This will automatically pick up benchmark-generated weights once they exist.
+This automatically picks up the checked-in benchmark-generated dispatchable weights.
 
 ---
 
@@ -139,9 +139,9 @@ This will automatically pick up benchmark-generated weights once they exist.
 | Transaction extension | Done | Correct with placeholder post-dispatch settlement weight |
 | Runtime integration | Done | Wired correctly |
 | Unit tests | Good | Core flows and key edge cases covered; e2e coverage still missing |
-| Benchmarks | Not started | Placeholder file only |
-| Generated weights | Not started | Using manual placeholders |
-| Proof size in weights | Missing | All weights have zero PoV |
+| Benchmarks | Done for dispatchables | Extension benchmarking still pending |
+| Generated weights | Done for dispatchables | Produced by `just benchmark-sponsored-tx` |
+| Proof size in weights | Done for dispatchables | Extension post-dispatch weight still placeholder-backed |
 | Fee destination | Intentional for now | Still burns fees to match current runtime economics |
 | Public API docs | Good | Crate docs and core public items are documented |
 | Client example | Done | Minimal but functional |
@@ -150,7 +150,7 @@ This will automatically pick up benchmark-generated weights once they exist.
 
 ## Recommended Next Steps (Priority Order)
 
-1. **Implement benchmarks** — replace placeholder weights with benchmark-derived values including proof size.
+1. **Benchmark the sponsored extension settlement path** — replace the remaining placeholder post-dispatch weight with benchmark-derived values.
 2. **Decide runtime-wide fee routing** — if the chain moves beyond learning/demo use, change regular and sponsored fee routing together rather than only one path.
 3. **Add e2e coverage for the example path** — automate the local node + Subxt happy-path verification.
 4. **Consider `#[deny(missing_docs)]`** — turn the current documentation bar into an enforced one.

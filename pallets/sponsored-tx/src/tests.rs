@@ -21,7 +21,7 @@ fn sponsored_post_dispatch_weight() -> polkadot_sdk::frame_support::weights::Wei
 	// Mirror the current placeholder settlement weight so accidental drift is explicit in tests.
 	let db_weight: polkadot_sdk::frame_support::weights::RuntimeDbWeight =
 		<Test as frame_system::Config>::DbWeight::get();
-	db_weight.reads_writes(4, 4)
+	db_weight.reads_writes(7, 7)
 }
 
 #[test]
@@ -372,7 +372,7 @@ fn sponsored_post_dispatch_splits_tip_and_fee_in_event() {
 			Event::SponsoredTransactionFeePaid {
 				sponsor: 1,
 				signer: 2,
-				actual_fee: actual_fee_with_tip - actual_tip,
+				actual_fee: actual_fee_with_tip,
 				tip: actual_tip,
 			}
 			.into(),
