@@ -9,7 +9,7 @@ use polkadot_sdk::{
 	pallet_balances, pallet_transaction_payment,
 	sp_runtime::{
 		generic::{Block as GenericBlock, Header as GenericHeader, UncheckedExtrinsic},
-		traits::{BlakeTwo256, Convert, IdentityLookup},
+		traits::{BlakeTwo256, IdentityLookup},
 	},
 };
 
@@ -72,18 +72,9 @@ impl pallet_transaction_payment::Config for Test {
 	type FeeMultiplierUpdate = ();
 }
 
-pub struct HoldReasonConverter;
-
-impl Convert<crate::HoldReason, RuntimeHoldReason> for HoldReasonConverter {
-	fn convert(reason: crate::HoldReason) -> RuntimeHoldReason {
-		RuntimeHoldReason::SponsoredTx(reason)
-	}
-}
-
 impl crate::Config for Test {
 	type RuntimeEvent = RuntimeEvent;
 	type FeeDestination = ();
-	type HoldReasonConverter = HoldReasonConverter;
 	type MaxAllowedCallers = ConstU32<8>;
 	type WeightInfo = ();
 }

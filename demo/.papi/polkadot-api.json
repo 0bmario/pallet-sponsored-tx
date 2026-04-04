@@ -1,0 +1,12 @@
+{
+  "version": 0,
+  "descriptorPath": ".papi/descriptors",
+  "entries": {
+    "sponsored": {
+      "wsUrl": "ws://127.0.0.1:9944",
+      "metadata": ".papi/metadata/sponsored.scale",
+      "genesis": "0x6b4a50e015b611b19fe17e6c451163ef16b06042486c3aae50230be57a8aa2c7",
+      "codeHash": "0x7b13edcdd888a118c0b8bc0e08d789c8fbf804fcf0f3a87d97491c82828c5827"
+    }
+  }
+}

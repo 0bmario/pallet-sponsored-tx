@@ -39,7 +39,8 @@ fn invalid(reason: InvalidSponsoredTransaction) -> TransactionValidityError {
 }
 
 #[derive(
-	Encode, Decode, DecodeWithMemTracking, TypeInfo, CloneNoBound, EqNoBound, PartialEqNoBound,
+	Encode, Decode, DecodeWithMemTracking, TypeInfo, DebugNoBound, CloneNoBound, EqNoBound,
+	PartialEqNoBound,
 )]
 #[scale_info(skip_type_params(T))]
 /// Payment extension that optionally redirects transaction fees to an explicit sponsor.
@@ -65,22 +66,7 @@ impl<T: Config> SponsoredChargeTransactionPayment<T> {
 	pub fn sponsor(&self) -> Option<&T::AccountId> {
 		self.sponsor.as_ref()
 	}
-}
 
-impl<T: Config> core::fmt::Debug for SponsoredChargeTransactionPayment<T> {
-	#[cfg(feature = "std")]
-	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		write!(
-			f,
-			"SponsoredChargeTransactionPayment {{ tip: {:?}, sponsor: {:?} }}",
-			self.tip, self.sponsor,
-		)
-	}
-
-	#[cfg(not(feature = "std"))]
-	fn fmt(&self, _: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		Ok(())
-	}
 }
 
 #[derive(DebugNoBound)]
@@ -97,6 +83,7 @@ pub enum SponsoredVal<T: Config> {
 }
 
 /// Pre-dispatch state carried into post-dispatch settlement.
+#[derive(DebugNoBound)]
 pub enum SponsoredPre<T: Config> {
 	/// The normal unsponsored payment path handled by `ChargeTransactionPayment`.
 	Unsponsored(pallet_transaction_payment::Pre<T>),
@@ -109,6 +96,7 @@ pub enum SponsoredPre<T: Config> {
 	},
 }
 
+<<<<<<< Updated upstream
 impl<T: Config> core::fmt::Debug for SponsoredPre<T> {
 	#[cfg(feature = "std")]
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -131,6 +119,13 @@ impl<T: Config> core::fmt::Debug for SponsoredPre<T> {
 	}
 }
 
+=======
+// The `weight()` function reports the extension's own overhead (validate + prepare I/O),
+// NOT the weight of the dispatched call. For the sponsored path this is hand-counted from the
+// storage accesses in validate and prepare; for the unsponsored path we delegate to the base
+// `ChargeTransactionPayment` weight. Post-dispatch settlement weight is returned separately
+// from `post_dispatch_details`.
+>>>>>>> Stashed changes
 impl<T> TransactionExtension<T::RuntimeCall> for SponsoredChargeTransactionPayment<T>
 where
 	T: Config + Send + Sync,
@@ -271,6 +266,7 @@ where
 				)
 			},
 			SponsoredPre::Sponsored { sponsor, signer, estimated_fee_with_tip, tip } => {
+<<<<<<< Updated upstream
 				let mut charged_fee_with_tip: BalanceOf<T> =
 					pallet_transaction_payment::Pallet::<T>::compute_actual_fee(
 						len as u32,
@@ -329,7 +325,96 @@ where
 				});
 
 				Ok(Weight::zero())
+=======
+				Ok(settle_sponsored_fee::<T>(
+					sponsor,
+					signer,
+					estimated_fee_with_tip,
+					tip,
+					info,
+					post_info,
+					len,
+				))
+>>>>>>> Stashed changes
 			},
 		}
 	}
+}
+
+/// Settle the actual fee against the sponsor's pending hold after dispatch completes.
+///
+/// Slashes the real fee from pending, restores any unused estimate back to budget hold, routes
+/// fee and tip credit through [`Config::FeeDestination`], and emits the settlement event.
+fn settle_sponsored_fee<T: Config>(
+	sponsor: T::AccountId,
+	signer: T::AccountId,
+	estimated_fee_with_tip: BalanceOf<T>,
+	tip: BalanceOf<T>,
+	info: &DispatchInfoOf<T::RuntimeCall>,
+	post_info: &PostDispatchInfoOf<T::RuntimeCall>,
+	len: usize,
+) -> Weight
+where
+	T::RuntimeCall: Dispatchable<Info = DispatchInfo, PostInfo = PostDispatchInfo>,
+	BalanceOf<T>: UniqueSaturatedInto<FeeBalanceOf<T>>,
+	FeeBalanceOf<T>: UniqueSaturatedInto<BalanceOf<T>>,
+{
+	// Placeholder settlement weight until dedicated extension benchmarks land.
+	// This covers the current path shape: slash pending hold, inspect/restore any
+	// remainder, and deposit the settlement event.
+	let settlement_weight =
+		T::DbWeight::get().reads_writes(SPONSORED_POST_DISPATCH_READS, SPONSORED_POST_DISPATCH_WRITES);
+	let mut charged_fee_with_tip: BalanceOf<T> =
+		pallet_transaction_payment::Pallet::<T>::compute_actual_fee(
+			len as u32,
+			info,
+			post_info,
+			tip.saturated_into(),
+		)
+		.saturated_into();
+	// Validation and prepare reserve the worst-case fee. If post-dispatch accounting
+	// produces something larger, clamp defensively rather than over-consuming funds
+	// outside the reserved amount.
+	if charged_fee_with_tip > estimated_fee_with_tip {
+		log::error!(
+			target: crate::LOG_TARGET,
+			"actual sponsored fee exceeded estimate, clamping. estimated: {:?}, actual: {:?}",
+			estimated_fee_with_tip,
+			charged_fee_with_tip,
+		);
+		charged_fee_with_tip = estimated_fee_with_tip;
+	}
+
+	let pending_reason = Pallet::<T>::pending_hold_reason();
+	let (credit, missing) =
+		pallet_balances::Pallet::<T>::slash(&pending_reason, &sponsor, charged_fee_with_tip);
+	if !missing.is_zero() {
+		log::error!(
+			target: crate::LOG_TARGET,
+			"sponsored pending hold for {:?} was short by {:?}",
+			sponsor,
+			missing,
+		);
+		charged_fee_with_tip = charged_fee_with_tip.saturating_sub(missing);
+	}
+
+	// Match the normal payment split by treating the tip as the first part of the
+	// charged amount, then route fee and tip credit through the configured destination hook.
+	let actual_tip = tip.min(charged_fee_with_tip);
+	let (tip_credit, fee_credit): (FeeCreditOf<T>, FeeCreditOf<T>) = credit.split(actual_tip);
+	T::FeeDestination::on_unbalanceds(core::iter::once(fee_credit).chain(Some(tip_credit)));
+
+	// Whatever remains in the pending hold after slashing the actual fee becomes
+	// available sponsor budget again.
+	Pallet::<T>::restore_pending_to_budget(&sponsor);
+	// Match `pallet_transaction_payment::TransactionFeePaid` convention: `actual_fee`
+	// includes the tip so that `actual_fee = base_fee + tip`.
+	Pallet::<T>::deposit_event(Event::SponsoredTransactionFeePaid {
+		sponsor,
+		signer,
+		actual_fee: charged_fee_with_tip,
+		tip: actual_tip,
+	});
+
+	settlement_weight
 }

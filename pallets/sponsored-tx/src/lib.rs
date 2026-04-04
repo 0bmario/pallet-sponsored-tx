@@ -78,7 +78,6 @@ use polkadot_sdk::{
 		OnUnbalanced,
 	},
 	pallet_balances, pallet_transaction_payment,
-	sp_runtime::traits::Convert,
 };
 
 /// Log target used by sponsorship settlement and hold-management paths.
@@ -107,19 +106,15 @@ pub mod pallet {
 
 	#[pallet::config]
 	pub trait Config:
-		frame_system::Config + pallet_balances::Config + pallet_transaction_payment::Config
+		frame_system::Config
+		+ pallet_balances::Config<RuntimeHoldReason: From<HoldReason>>
+		+ pallet_transaction_payment::Config
 	{
 		#[allow(deprecated)]
 		type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
 		/// Destination for fee and tip credit after sponsored settlement completes.
 		type FeeDestination: OnUnbalanced<FeeCreditOf<Self>>;
-
-		/// Converts pallet-local hold reasons into the runtime hold-reason type.
-		type HoldReasonConverter: Convert<
-			HoldReason,
-			<Self as pallet_balances::Config>::RuntimeHoldReason,
-		>;
 
 		/// Maximum number of allowlisted callers per sponsor.
 		#[pallet::constant]
@@ -330,11 +325,11 @@ pub mod pallet {
 
 	impl<T: Config> Pallet<T> {
 		pub(crate) fn budget_hold_reason() -> <T as pallet_balances::Config>::RuntimeHoldReason {
-			T::HoldReasonConverter::convert(HoldReason::SponsorshipBudget)
+			HoldReason::SponsorshipBudget.into()
 		}
 
 		pub(crate) fn pending_hold_reason() -> <T as pallet_balances::Config>::RuntimeHoldReason {
-			T::HoldReasonConverter::convert(HoldReason::SponsorshipPending)
+			HoldReason::SponsorshipPending.into()
 		}
 
 		pub(crate) fn budget_on_hold(who: &T::AccountId) -> BalanceOf<T> {
