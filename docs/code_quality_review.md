@@ -22,7 +22,7 @@ The codebase is clean, well-structured, and correctly implements its stated V1 s
 
 ### Areas for Improvement
 
-1. **Public types lack doc comments.** `SponsorPolicy`, `SponsorState` fields, and several `Config` associated types are undocumented. SDK pallets typically document every public item.
+1. **Public API docs are now mostly present.** Crate-level docs, public sponsor types, config associated types, events, errors, dispatchables, and extension methods are documented. This is much closer to SDK style.
 
 2. **No `#[deny(missing_docs)]`.** Adding this would enforce documentation coverage as the pallet grows.
 
@@ -43,26 +43,23 @@ The codebase is clean, well-structured, and correctly implements its stated V1 s
 | `sponsored_validation_rejects_non_allowlisted_signer` | Allowlist enforcement |
 | `sponsored_prepare_moves_budget_to_pending_and_post_dispatch_restores_refund` | Full prepare → dispatch → post_dispatch lifecycle |
 | `unsponsored_path_keeps_signer_payment_behavior` | Fallback to normal payment |
+| `sponsored_validation_rejects_inactive_sponsor` | Paused sponsor rejected by extension validation |
+| `sponsored_validation_rejects_fee_cap_exceeded` | Per-transaction fee cap enforced by extension validation |
+| `sponsored_validation_rejects_insufficient_budget` | Budget hold shortfall rejected by extension validation |
+| `unregister_blocked_while_pending_hold_exists` | Sponsor cannot unregister while a pending hold exists |
+| `sponsored_tx_with_tip_splits_correctly` | Sponsored settlement records tip separately |
 
 ### Gaps
 
-1. **No test for inactive sponsor rejection.** Validation should fail for `active = false`. The pause/resume lifecycle test covers the dispatchable but not the extension validation against a paused sponsor.
+1. **No test for `set_policy`.** The `set_policy` dispatchable is not directly tested (only `register_sponsor` validates policy).
 
-2. **No test for fee cap exceeded.** The `FeeCapExceeded` validation error is not exercised in tests.
+2. **No test for concurrent sponsored transactions.** Two in-flight sponsored txs from different callers against the same sponsor could interact through the budget/pending holds. This should be tested.
 
-3. **No test for insufficient budget.** The `InsufficientBudget` validation error at the extension level is not tested (only the dispatchable `InsufficientAvailableBudget` is indirectly covered via `decrease_budget`).
+3. **No test for zero-budget registration.** The `ZeroBudget` error on `register_sponsor` is not tested.
 
-4. **No test for concurrent sponsored transactions.** Two in-flight sponsored txs from different callers against the same sponsor could interact through the budget/pending holds. This should be tested.
+4. **No precise fee-event assertion for tipped transactions.** Tip presence is tested, but `actual_fee` should also be verified against `compute_actual_fee`.
 
-5. **No test for `set_policy`.** The `set_policy` dispatchable is not directly tested (only `register_sponsor` validates policy).
-
-6. **No test for sponsored transaction with a tip.** All tests use `tip = 0`. The tip-splitting logic in `post_dispatch_details` (lines 310-315) is untested.
-
-7. **No test for the `SponsoredTransactionFeePaid` event fields.** The event is asserted in one test but the actual fee and tip values should be verified more precisely against computed expectations.
-
-8. **No test for unregister with pending budget.** The `PendingBudgetNotEmpty` error path is not tested.
-
-9. **No test for zero-budget registration.** The `ZeroBudget` error on `register_sponsor` is not tested.
+5. **No explicit assertion for returned sponsored settlement weight.** The post-dispatch path now returns non-zero weight, but tests do not assert that behavior.
 
 ---
 
@@ -80,7 +77,7 @@ The codebase is clean, well-structured, and correctly implements its stated V1 s
 
 2. **Zero proof size** means PoV (Proof of Validity) metering is not tracked. On a parachain, PoV is a critical constraint. Under-counting PoV can cause blocks to exceed relay chain limits.
 
-3. **Extension weight** (`weight()` in extension.rs) adds `reads_writes(2, 2)` on top of the base `ChargeTransactionPayment` weight. The sponsored post_dispatch returns `Weight::zero()`, under-counting settlement overhead.
+3. **Extension settlement weight is still placeholder-based.** `weight()` in `extension.rs` adds `reads_writes(2, 2)` on top of the base `ChargeTransactionPayment` weight for validation and prepare. Sponsored `post_dispatch` now returns a non-zero hand-counted settlement weight (`7` reads, `7` writes), but this still needs benchmark-derived values and proof size before production.
 
 ### Recommendation
 
@@ -127,14 +124,15 @@ This will automatically pick up benchmark-generated weights once they exist.
 - Demonstrates the complete happy path: register sponsor, submit sponsored tx.
 - Correctly implements the custom `TransactionExtension` trait for Subxt.
 - `SponsoredParamsBuilder` provides a clean ergonomic API.
+- Prints sponsor state, Alice/Bob balances, budget/pending holds, and `SponsoredTransactionFeePaid`.
+- Demonstrates paused-sponsor rejection as a negative path.
 - Good module-level doc comment explaining why the example exists.
 
 ### Gaps
 
-- No error handling beyond `?` propagation. A production client would need retry logic and state verification.
-- Hard-coded budget values (`2_000_000_000_000`, `500_000_000_000`). Consider making these configurable.
-- No verification step after submission (e.g., reading the event or checking sponsor state).
-- The example doesn't demonstrate the unsponsored fallback path.
+- No production-style retry or idempotency. The demo assumes a clean dev chain.
+- Hard-coded dev accounts and budget values. This is deliberate for repeatable recording.
+- It demonstrates unsponsored registration plus sponsored remarks, but not a separate generic unsponsored user transaction.
 
 ---
 
@@ -143,15 +141,15 @@ This will automatically pick up benchmark-generated weights once they exist.
 | Item | Status | Notes |
 |---|---|---|
 | Core pallet logic | Done | Correct and clean |
-| Transaction extension | Done | Correct with minor weight gap |
+| Transaction extension | Done | Correct with placeholder settlement weight |
 | Runtime integration | Done | Wired correctly |
-| Unit tests | Partial | Core flows covered, edge cases missing (see Gaps) |
+| Unit tests | Partial | Core flows covered, edge cases remain (see Gaps) |
 | Benchmarks | Not started | Placeholder file only |
 | Generated weights | Not started | Using manual placeholders |
 | Proof size in weights | Missing | All weights have zero PoV |
 | Fee destination | Needs config | Currently burns all fees |
-| Public API docs | Partial | Crate docs exist, per-item docs missing |
-| Client example | Done | Minimal but functional |
+| Public API docs | Mostly done | Per-item docs added; consider `deny(missing_docs)` later |
+| Client example | Done | Scripted Subxt demo with state/event verification |
 | Rate limiting | Not in scope | Documented as V1 scope cut |
 | Call filtering | Not in scope | Documented as V1 scope cut |
 
@@ -159,6 +157,6 @@ This will automatically pick up benchmark-generated weights once they exist.
 
 1. **Fix `FeeDestination`** — route sponsored fees to treasury/author instead of burning.
 2. **Implement benchmarks** — replace placeholder weights with benchmark-derived values including proof size.
-3. **Add missing test cases** — inactive sponsor, fee cap exceeded, insufficient budget, concurrent txs, tip handling, pending-not-empty unregister.
-4. **Return non-zero weight from sponsored `post_dispatch_details`** — account for settlement overhead.
-5. **Add per-item doc comments** — public types, events, errors, config items.
+3. **Add remaining test cases** — `set_policy`, zero-budget registration, concurrent txs, precise tipped event fields, non-zero settlement weight.
+4. **Improve client robustness if reused beyond demo** — add idempotency, flags, and retry/state reconciliation.
+5. **Consider `#[deny(missing_docs)]` later** — only after benchmark scaffolding and examples are stable.

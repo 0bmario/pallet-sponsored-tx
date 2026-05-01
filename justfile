@@ -63,13 +63,9 @@ chain-spec: download-binaries build
 run: chain-spec
     .bin/polkadot-omni-node --chain ./chain_spec.json --dev
 
-# Install demo dependencies and generate PAPI types (requires running node)
-demo-install:
-    cd demo && npm install && npx papi add sponsored -w ws://127.0.0.1:9944 && npx papi
-
-# Start the demo Vite dev server
-demo:
-    cd demo && npx vite
+# Run the Subxt sponsored-fee demo (requires running node)
+subxt-demo:
+    cargo run -p sponsored-tx-subxt-example
 
 # Full setup: download binaries + build + symlinks
 setup: download-binaries build

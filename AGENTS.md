@@ -10,6 +10,10 @@ FRAME pallet for sponsor-paid transaction fees on Polkadot SDK. Learning project
 
 ## Reviewing and writing code
 
+- Think first. If unclear, ask. If tradeoff exists, name it.
+- Prefer smallest change that solves request. No speculative features.
+- Edit surgically. Every changed line must trace to request.
+- Define success before coding. Verify with smallest relevant check.
 - Formatting requires nightly: `just fmt` (or `cargo +nightly fmt`).
 - `docs/security_review.md` is the source of truth for known issues and accepted trade-offs.
 - Hold accounting is the critical invariant — any change to hold/release/slash flows must be reviewed against S-01 and S-02.

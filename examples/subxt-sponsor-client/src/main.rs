@@ -1,18 +1,20 @@
-//! Minimal first-party client example for sponsored native fees.
+//! Scripted first-party client demo for sponsored native fees.
 //!
 //! The runtime exposes a custom payment extension,
 //! `SponsoredChargeTransactionPayment { tip, sponsor }`, so generic clients do not automatically
-//! know how to encode the signed payload. This example shows the smallest working Subxt setup for:
+//! know how to encode the signed payload. This example shows a Subxt setup for:
 //!
 //! - registering a sponsor
 //! - encoding the custom extension
 //! - submitting a sponsored transaction from an allowlisted signer
+//! - reading sponsor state, balance holds, and settlement events
 
-use anyhow::Result;
+use anyhow::{anyhow, Context, Result};
 use codec::{Compact, Encode};
 use scale_decode::DecodeAsType;
 use scale_encode::EncodeAsType;
 use scale_info::PortableRegistry;
+use scale_value::{Composite, ValueDef};
 use subxt::{
 	client::ClientState,
 	config::{
@@ -20,11 +22,16 @@ use subxt::{
 		Config, DefaultExtrinsicParamsBuilder, ExtrinsicParams, ExtrinsicParamsEncoder,
 		ExtrinsicParamsError,
 	},
-	dynamic::{self, Value},
+	dynamic::{self, At, Value},
 	utils::{AccountId32, MultiAddress, MultiSignature},
 	OnlineClient,
 };
 use subxt_signer::sr25519::dev;
+
+const UNIT: u128 = 1_000_000_000_000;
+const INITIAL_BUDGET: u128 = 2 * UNIT;
+const MAX_FEE_PER_TX: u128 = UNIT / 2;
+const TIP: u128 = 0;
 
 // Type alias for the full tuple of extension parameters that Subxt needs
 // when building a transaction for our custom config.
@@ -226,11 +233,173 @@ fn sponsored_remark_call(remark: &[u8]) -> impl subxt::tx::Payload {
 	dynamic::tx("System", "remark", vec![Value::from_bytes(remark)])
 }
 
+fn pause_call() -> impl subxt::tx::Payload {
+	dynamic::tx("SponsoredTx", "pause", Vec::<Value>::new())
+}
+
+#[derive(Debug)]
+struct DemoState {
+	sponsor_active: Option<bool>,
+	alice_free: u128,
+	bob_free: u128,
+	budget_hold: u128,
+	pending_hold: u128,
+}
+
+#[derive(Debug)]
+struct SponsoredFeePaid {
+	actual_fee: u128,
+	tip: u128,
+}
+
+async fn query_demo_state(
+	client: &OnlineClient<SponsoredConfig>,
+	sponsor: &AccountId32,
+	sponsored_user: &AccountId32,
+) -> Result<DemoState> {
+	let storage = client.storage().at_latest().await?;
+
+	let sponsor_query =
+		dynamic::storage("SponsoredTx", "Sponsors", vec![Value::from_bytes(sponsor.0)]);
+	let sponsor_active = storage
+		.fetch(&sponsor_query)
+		.await?
+		.map(|value| value.to_value())
+		.transpose()?
+		.and_then(|value| value.at("active").and_then(Value::as_bool));
+
+	let alice_free = account_free_balance(&storage, sponsor)
+		.await
+		.context("read Alice free balance")?;
+	let bob_free = account_free_balance(&storage, sponsored_user)
+		.await
+		.context("read Bob free balance")?;
+	let (budget_hold, pending_hold) =
+		sponsor_holds(&storage, sponsor).await.context("read Alice balance holds")?;
+
+	Ok(DemoState { sponsor_active, alice_free, bob_free, budget_hold, pending_hold })
+}
+
+async fn account_free_balance(
+	storage: &subxt::storage::Storage<SponsoredConfig, OnlineClient<SponsoredConfig>>,
+	account: &AccountId32,
+) -> Result<u128> {
+	let query = dynamic::storage("System", "Account", vec![Value::from_bytes(account.0)]);
+	let value = storage.fetch(&query).await?.context("account storage missing")?.to_value()?;
+
+	value
+		.at("data")
+		.at("free")
+		.and_then(Value::as_u128)
+		.context("free balance missing from System::Account")
+}
+
+async fn sponsor_holds(
+	storage: &subxt::storage::Storage<SponsoredConfig, OnlineClient<SponsoredConfig>>,
+	account: &AccountId32,
+) -> Result<(u128, u128)> {
+	let query = dynamic::storage("Balances", "Holds", vec![Value::from_bytes(account.0)]);
+	let Some(value) = storage.fetch(&query).await? else {
+		return Ok((0, 0));
+	};
+	let value = value.to_value()?;
+	let mut budget = 0;
+	let mut pending = 0;
+	collect_sponsor_holds(&value, &mut budget, &mut pending);
+
+	Ok((budget, pending))
+}
+
+fn collect_sponsor_holds(value: &Value<u32>, budget: &mut u128, pending: &mut u128) {
+	if let Some(amount) = value.at("amount").and_then(Value::as_u128) {
+		let reason = value.at("id").map(|id| format!("{id}")).unwrap_or_default();
+		if reason.contains("SponsorshipBudget") {
+			*budget = amount;
+		} else if reason.contains("SponsorshipPending") {
+			*pending = amount;
+		}
+	}
+
+	match &value.value {
+		ValueDef::Composite(Composite::Named(values)) => {
+			for (_, child) in values {
+				collect_sponsor_holds(child, budget, pending);
+			}
+		},
+		ValueDef::Composite(Composite::Unnamed(values)) => {
+			for child in values {
+				collect_sponsor_holds(child, budget, pending);
+			}
+		},
+		ValueDef::Variant(variant) => match &variant.values {
+			Composite::Named(values) => {
+				for (_, child) in values {
+					collect_sponsor_holds(child, budget, pending);
+				}
+			},
+			Composite::Unnamed(values) => {
+				for child in values {
+					collect_sponsor_holds(child, budget, pending);
+				}
+			},
+		},
+		ValueDef::BitSequence(_) | ValueDef::Primitive(_) => {},
+	}
+}
+
+fn print_state(label: &str, state: &DemoState) {
+	println!("{label}");
+	println!("  sponsor active: {}", format_active(state.sponsor_active));
+	println!("  Alice free: {}", format_balance(state.alice_free));
+	println!("  Bob free: {}", format_balance(state.bob_free));
+	println!("  Alice SponsorshipBudget hold: {}", format_balance(state.budget_hold));
+	println!("  Alice SponsorshipPending hold: {}", format_balance(state.pending_hold));
+}
+
+fn format_active(active: Option<bool>) -> &'static str {
+	match active {
+		Some(true) => "yes",
+		Some(false) => "paused",
+		None => "not registered",
+	}
+}
+
+fn format_balance(planck: u128) -> String {
+	let whole = planck / UNIT;
+	let frac = (planck % UNIT) / 100_000_000;
+	format!("{whole}.{frac:04} UNIT")
+}
+
+fn find_sponsored_fee_paid(
+	events: &subxt::blocks::ExtrinsicEvents<SponsoredConfig>,
+) -> Result<SponsoredFeePaid> {
+	for event in events.iter() {
+		let event = event?;
+		if event.pallet_name() == "SponsoredTx"
+			&& event.variant_name() == "SponsoredTransactionFeePaid"
+		{
+			let fields = event.field_values()?;
+			let actual_fee = fields
+				.at("actual_fee")
+				.and_then(Value::as_u128)
+				.context("actual_fee missing from SponsoredTransactionFeePaid")?;
+			let tip = fields
+				.at("tip")
+				.and_then(Value::as_u128)
+				.context("tip missing from SponsoredTransactionFeePaid")?;
+			return Ok(SponsoredFeePaid { actual_fee, tip });
+		}
+	}
+
+	Err(anyhow!("SponsoredTransactionFeePaid event not found"))
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
 	// Connect to a local dev node (or override via env var).
 	let url =
 		std::env::var("SPONSORED_TX_RPC_URL").unwrap_or_else(|_| "ws://127.0.0.1:9944".into());
+	println!("1. Connecting to {url}");
 	let client = OnlineClient::<SponsoredConfig>::from_url(url).await?;
 
 	// Dev accounts: Alice will be the sponsor, Bob the sponsored user.
@@ -241,12 +410,16 @@ async fn main() -> Result<()> {
 	let sponsored_user_account = sponsored_user.public_key().to_account_id();
 	let extra_allowed_user_account = extra_allowed_user.public_key().to_account_id();
 
-	// Step 1: Alice registers as a sponsor with a 2 DOT budget and 0.5 DOT max fee per tx.
+	let state = query_demo_state(&client, &sponsor_account, &sponsored_user_account).await?;
+	print_state("Initial state", &state);
+
+	// Step 2: Alice registers as a sponsor with a 2 UNIT budget and 0.5 UNIT max fee per tx.
 	// This transaction is unsponsored (Alice pays her own fees for registering).
+	println!("\n2. Registering Alice as sponsor (unsponsored tx)");
 	let register_call = register_sponsor_call(
 		&[sponsored_user_account.clone(), extra_allowed_user_account],
-		2_000_000_000_000,
-		500_000_000_000,
+		INITIAL_BUDGET,
+		MAX_FEE_PER_TX,
 	);
 	let register_params = SponsoredParamsBuilder::new().mortal(32).unsponsored().build();
 
@@ -257,19 +430,72 @@ async fn main() -> Result<()> {
 		.wait_for_finalized_success()
 		.await?;
 
-	// Step 2: Bob submits a remark, but Alice pays the fees.
-	// The `sponsor(sponsor_account)` call tells the runtime to charge Alice instead of Bob.
-	let sponsored_remark = sponsored_remark_call(b"runtime native sponsored fees");
-	let sponsored_params =
-		SponsoredParamsBuilder::new().mortal(32).sponsor(sponsor_account).build();
+	let state = query_demo_state(&client, &sponsor_account, &sponsored_user_account).await?;
+	print_state("After registration", &state);
 
-	client
+	// Step 3: Bob submits a remark, but Alice pays the fees.
+	// The `sponsor(sponsor_account)` call tells the runtime to charge Alice instead of Bob.
+	println!("\n3. Bob submits sponsored System::remark; Alice pays");
+	let sponsored_remark = sponsored_remark_call(b"runtime native sponsored fees");
+	let sponsored_params = SponsoredParamsBuilder::new()
+		.mortal(32)
+		.tip(TIP)
+		.sponsor(sponsor_account.clone())
+		.build();
+
+	let events = client
 		.tx()
 		.sign_and_submit_then_watch(&sponsored_remark, &sponsored_user, sponsored_params)
 		.await?
 		.wait_for_finalized_success()
 		.await?;
 
-	println!("Registered Alice as sponsor and submitted a sponsored remark from Bob.");
+	let paid = find_sponsored_fee_paid(&events)?;
+	println!(
+		"  Event: SponsoredTransactionFeePaid actual_fee={} tip={}",
+		format_balance(paid.actual_fee),
+		format_balance(paid.tip)
+	);
+
+	let state = query_demo_state(&client, &sponsor_account, &sponsored_user_account).await?;
+	print_state("After sponsored remark", &state);
+
+	// Step 4: Pause Alice and show validation rejects a new sponsored transaction.
+	println!("\n4. Pausing Alice sponsor");
+	let pause_params = SponsoredParamsBuilder::new().mortal(32).unsponsored().build();
+	client
+		.tx()
+		.sign_and_submit_then_watch(&pause_call(), &sponsor, pause_params)
+		.await?
+		.wait_for_finalized_success()
+		.await?;
+
+	let state = query_demo_state(&client, &sponsor_account, &sponsored_user_account).await?;
+	print_state("After pause", &state);
+
+	println!("\n5. Bob tries another sponsored remark while Alice is paused");
+	let rejected_params = SponsoredParamsBuilder::new()
+		.mortal(32)
+		.sponsor(sponsor_account.clone())
+		.build();
+	let rejected = client
+		.tx()
+		.sign_and_submit_then_watch(
+			&sponsored_remark_call(b"should be rejected"),
+			&sponsored_user,
+			rejected_params,
+		)
+		.await;
+	match rejected {
+		Ok(progress) => match progress.wait_for_finalized_success().await {
+			Ok(_) => return Err(anyhow!("paused sponsored transaction unexpectedly succeeded")),
+			Err(error) => println!("  Rejected as expected: {error}"),
+		},
+		Err(error) => println!("  Rejected as expected: {error}"),
+	}
+
+	let state = query_demo_state(&client, &sponsor_account, &sponsored_user_account).await?;
+	print_state("Final state", &state);
+
 	Ok(())
 }

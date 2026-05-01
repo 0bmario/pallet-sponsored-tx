@@ -27,7 +27,7 @@
 ### Client Example (`examples/subxt-sponsor-client/`)
 
 - Custom Subxt extension encoder for `SponsoredChargeTransactionPayment`
-- Registers Alice as sponsor, allowlists Bob/Charlie, submits sponsored `System.remark`
+- Scripted demo that registers Alice, allowlists Bob/Charlie, submits Bob's sponsored `System.remark`, prints settlement events, reads balance holds, pauses Alice, and shows paused sponsorship rejection
 
 ### Tests (`pallets/sponsored-tx/src/tests.rs`)
 
@@ -50,6 +50,6 @@ Polkadot.js Apps confirmed correct storage and event decoding.
 ## Known Gaps
 
 1. **Benchmarking deferred** — placeholder weights in `weights.rs`, no benchmark-derived weights yet.
-2. **No generic wallet support** — write-side submission requires the custom Subxt client. Read-side works in Polkadot.js Apps.
+2. **No generic wallet support** — write-side submission requires a client that can encode the custom signed extension, such as the Subxt example. Read-side works in Polkadot.js Apps.
 3. **No broader policy engine** — no rate limits, call filters, sponsor discovery, multi-sponsor, cooldown withdrawals, or asset-based fees. Intentional V1 scope cut.
-4. **Example is minimal** — proves the path but not operator-hardened or idempotent.
+4. **Example is demo-scoped** — proves the path with dev accounts but is not operator-hardened or idempotent.

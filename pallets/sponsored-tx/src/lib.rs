@@ -396,9 +396,7 @@ pub mod pallet {
 				Err(error) => {
 					log::error!(
 						target: LOG_TARGET,
-						"failed to release sponsorship pending hold for {:?}: {:?}",
-						who,
-						error,
+						"failed to release sponsorship pending hold for {who:?}: {error:?}",
 					);
 					return;
 				},
@@ -418,9 +416,7 @@ pub mod pallet {
 			{
 				log::error!(
 					target: LOG_TARGET,
-					"failed to restore sponsorship budget hold for {:?}: {:?}",
-					who,
-					error,
+					"failed to restore sponsorship budget hold for {who:?}: {error:?}",
 				);
 			}
 		}

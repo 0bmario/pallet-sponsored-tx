@@ -134,84 +134,42 @@ The test names and scenarios are already structured around behavior:
 
 That is directionally aligned with SDK test style.
 
-## Main Style Gaps To Fix In A Follow-Up Pass
+## Style Gaps After Documentation Pass
 
-### 1. Missing Crate-Level Documentation
+### 1. Crate-Level Documentation
 
-Current gap:
+Status:
 
-- `pallets/sponsored-tx/src/lib.rs` starts directly with `#![cfg_attr(...)]`
-- there is no crate-level `//!` overview
-- there is no explanation of terminology such as sponsor, budget hold, pending hold, or sponsored payment path
+- `pallets/sponsored-tx/src/lib.rs` now has crate-level `//!` docs
+- docs explain sponsor lifecycle, two-hold budget model, transaction extension behavior, and V1 scope
+- this now matches the broad SDK expectation that the top of the pallet frames the runtime semantics
 
-Why it matters:
+Remaining improvement:
 
-- this is the first thing a reviewer sees
-- SDK pallets rely on these top-level docs to frame the code
-- this pallet has non-trivial semantics and needs that context
+- examples could be added later if the pallet grows beyond the current first-party client scope
 
-Recommendation:
+### 2. Public Types And Public API Documentation
 
-- add crate-level docs in the style of `pallet-meta-tx` and `pallet-transaction-payment`
-- include:
-  - overview
-  - pallet API
-  - implementation details
-  - settlement model
-  - first-party client scope
+Status:
 
-### 2. Missing Documentation On Public Types And Public API
+- `SponsorPolicy`, `SponsorState`, `SponsoredChargeTransactionPayment`, and extension helper methods are documented
+- config associated types, storage, events, errors, and dispatchables now have concise doc comments
+- this is much closer to generated-doc quality expected from SDK-style pallets
 
-Current gap:
+Remaining improvement:
 
-- `SponsorPolicy`
-- `SponsorState`
-- `SponsoredChargeTransactionPayment`
-- public helper methods like `new`, `tip`, and `sponsor`
-- config associated types
-- storage item `Sponsors`
-- event variants
-- error variants
-- dispatchables
-
-are mostly undocumented.
-
-Why it matters:
-
-- FRAME pallets are consumed as public runtime components
-- public docs are part of the API quality bar
-- the event and error surface should be readable without reverse-engineering implementation
-
-Recommendation:
-
-- add doc comments to every public type and public pallet item
-- use short, direct docs, not long prose everywhere
+- once benchmarks and examples settle, consider `#![deny(missing_docs)]` to keep coverage from regressing
 
 ### 3. Extension Lifecycle Needs Explicit Invariant Comments
 
-Current gap:
+Status:
 
-The extension logic is correct, but the code in `extension.rs` does not explain the core invariants clearly enough.
+- `extension.rs` now has comments around unsponsored fallback, signed-origin restriction, prepare reservation, post-dispatch clamping, settlement weight, fee/tip routing, and pending-to-budget restoration
+- the key `validate -> prepare -> post_dispatch` phase boundaries are easier to review
 
-The most important missing explanations are:
+Remaining improvement:
 
-- why sponsored validation is restricted to signed origins
-- why `prepare` moves funds from budget to pending
-- why `post_dispatch` may clamp actual fee to estimate
-- why pending is restored back into budget after slashing
-- how sponsored and unsponsored paths intentionally differ
-
-Why it matters:
-
-- transaction extensions are harder to read than normal dispatchables
-- this is the least familiar part of the implementation for most reviewers
-- a few targeted comments would remove most of the cognitive load
-
-Recommendation:
-
-- add comments at the major phase boundaries
-- do not narrate every line
-- document the invariants and the intent of each transition
+- comments should stay focused on invariants; avoid expanding into line-by-line narration
 
 ### 4. Pallet Module Imports Are Less Idiomatic Than SDK Style
 
@@ -227,65 +185,49 @@ Recommendation:
 - prefer the familiar `frame_support::pallet_prelude::*` and `frame_system::pallet_prelude::*` style locally where practical
 - keep crate-root exports and helper aliases documented
 
-### 5. Events And Errors Need Per-Variant Docs
-
-Current gap:
-
-Event and error variants are readable by name, but they do not carry SDK-style doc comments.
-
-Why it matters:
-
-- SDK pallets usually document what each event means and what each error condition represents
-- this matters for downstream users, docs, and generated metadata readers
-
-Recommendation:
-
-- add one-line docs to each event and error variant
-- reserve longer comments for the few variants that need explanation
-
-### 6. Benchmarking And Weights Are Structurally Present But Not Yet SDK-Grade
+### 5. Benchmarking And Weights Are Structurally Present But Not Yet SDK-Grade
 
 Current gap:
 
 - `benchmarking.rs` explicitly says benchmarking is deferred
 - `weights.rs` contains manual placeholder values
+- sponsored post-dispatch settlement uses hand-counted reads/writes rather than generated benchmark output
 
 Why it matters:
 
 - the file layout is correct
 - the implementation is not yet at the normal SDK completeness bar
+- proof-size weights matter for parachain PoV limits
 
 Recommendation:
 
 - treat benchmark coverage and generated weights as a required style-completion step
 - do not leave manual weights as the long-term state
 
-### 7. The Example Client Is Useful But Under-Documented
+### 6. The Example Client Is Useful But Demo-Scoped
 
-Current gap:
+Current state:
 
-The Subxt example proves the path, but it does not yet read like an SDK-quality example:
+The Subxt example proves the path and now has a useful module-level explanation. It is intentionally scripted for a local demo:
 
-- minimal top-level explanation
-- no guidance on why a custom Subxt extension is needed
-- no explanation of the payload shape relative to runtime metadata
+- hard-coded dev accounts and budget values
+- no production idempotency or retry logic
+- no separate generic unsponsored user transaction beyond Alice's unsponsored registration
 
 Recommendation:
 
-- add a short module-level comment at the top of the example
-- explain that this example exists because generic clients do not automatically know how to encode the custom transaction extension
+- keep it small for recording
+- add flags/idempotency only if it becomes a reusable operator tool
 
 ## Recommended Cleanup Order
 
-This is the order I would use in a dedicated style pass.
+Current remaining cleanup order:
 
-1. Add crate-level docs to `pallets/sponsored-tx/src/lib.rs`.
-2. Add doc comments to public types in `types.rs` and `extension.rs`.
-3. Add doc comments to config items, storage, events, errors, and dispatchables in `lib.rs`.
-4. Add targeted invariant comments in `extension.rs` around validate, prepare, and post-dispatch.
-5. Tighten pallet-module import style where it improves readability.
-6. Improve the example’s top-level explanatory comments.
-7. Finish benchmarking and replace manual weights with benchmark-derived weights.
+1. Finish benchmarking and replace manual weights with benchmark-derived weights.
+2. Add proof-size weights.
+3. Improve example robustness only if it becomes more than a demo.
+4. Tighten pallet-module imports only if it improves readability.
+5. Consider `#![deny(missing_docs)]` after the public API stabilizes.
 
 ## What Not To Change In The Name Of Style
 
@@ -301,13 +243,12 @@ Those are design decisions. The style pass should make them easier to understand
 
 ## Bottom Line
 
-The implementation already has the right macro-level structure for a FRAME pallet. The main gap is not architecture. The main gap is that the code does not yet explain itself with the same level of documentation and invariant-signposting that SDK pallets usually provide.
+The implementation already has the right macro-level structure for a FRAME pallet, and the recent documentation pass closed the largest SDK-style readability gaps. The remaining gap is production completeness: benchmarks, generated weights with proof size, and operator-grade client hardening if the demo client is reused.
 
-In practice, the best next step is a non-functional cleanup pass focused on:
+In practice, the best next step is a non-functional production-readiness pass focused on:
 
-- crate docs
-- public API docs
-- invariant comments
 - benchmark and weight completeness
+- proof-size accounting
+- client hardening only beyond demo scope
 
 That is what will make `pallet-sponsored-tx` feel much closer to a native SDK pallet.

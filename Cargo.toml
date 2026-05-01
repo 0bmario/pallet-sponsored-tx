@@ -7,8 +7,7 @@ edition = "2021"
 
 [workspace]
 default-members = ["pallets/template", "runtime"]
-# members = ["examples/subxt-sponsor-client", "exercises", "node", "pallets/*", "runtime"]
-members = ["node", "pallets/*", "runtime"]
+members = ["examples/subxt-sponsor-client", "node", "pallets/*", "runtime"]
 resolver = "2"
 
 

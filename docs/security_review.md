@@ -127,17 +127,17 @@ With `MaxAllowedCallers = 32`, the worst case is ~496 comparisons, which is acce
 
 ---
 
-### S-07: `post_dispatch_details` Returns `Weight::zero()` for Sponsored Path (Low)
+### S-07: `post_dispatch_details` Returned `Weight::zero()` for Sponsored Path (Low) — **Fixed**
 
 **Location:** `extension.rs:331`
 
-**Description:** The sponsored post-dispatch path returns `Weight::zero()`, meaning the weight consumed by the settlement logic (slash, restore, event deposit) is not accounted for in the returned weight.
+**Description:** The sponsored post-dispatch path originally returned `Weight::zero()`, meaning the weight consumed by the settlement logic (slash, restore, event deposit) was not accounted for in the returned weight.
 
 The `weight()` method does add `reads_writes(2, 2)` to the base `ChargeTransactionPayment` weight, which covers validation and prepare. But the post-dispatch overhead is separate.
 
-**Impact:** The block slightly undercharges for sponsored transactions. The difference is small (a few storage reads/writes per sponsored tx).
+**Impact:** The block slightly undercharged for sponsored transactions. The difference was small (a few storage reads/writes per sponsored tx).
 
-**Recommendation:** Return a non-zero weight from the sponsored post-dispatch path that reflects the actual storage operations (slash, release, hold, event deposit). This becomes more important under production load.
+**Resolution:** `settle_sponsored_fee` now returns a non-zero placeholder settlement weight based on hand-counted storage accesses (`7` reads, `7` writes). This fixes the zero-weight bug while keeping benchmarking as a production-readiness gap. Dedicated benchmarks should still replace the hand-counted values before production.
 
 ---
 
@@ -193,7 +193,7 @@ An allowlisted caller could set a high tip (up to `max_fee_per_tx`) on every tra
 | S-04 | Informational | No rate limiting | Intentional V1 scope cut |
 | S-05 | Informational | No call filtering | Intentional V1 scope cut |
 | S-06 | Low | O(n^2) duplicate check | Acceptable at n <= 32 |
-| S-07 | Low | Zero weight from sponsored post-dispatch | Should fix before production |
+| S-07 | Low | Zero weight from sponsored post-dispatch | **Fixed** — non-zero placeholder settlement weight |
 | S-08 | Low | BestEffort release on unregister | **Fixed** — switched to Exact |
 | S-09 | Low | Tip inflation within fee cap | Acceptable with trusted callers |
 

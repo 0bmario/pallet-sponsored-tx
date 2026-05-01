@@ -13,12 +13,15 @@ sequenceDiagram
     Caller->>Node: Submit signed Extrinsic<br/>(sponsor = Some(SponsorAccountId))
 
     rect rgb(40, 45, 55)
-        Note over Node, Balances: 1. PREPARE (Validation & Reservation)
-        Node->>Ext: Validate transaction (Weight limit, nonce, etc.)
+        Note over Node, Pallet: 1. VALIDATE (Read-only Checks)
+        Node->>Ext: validate transaction
         Ext->>Pallet: Check Policy
-        Pallet-->>Ext: Validate (Sponsor active? Caller allowed?)
+        Pallet-->>Ext: Sponsor active? Caller allowed? Budget sufficient?
+    end
 
-        Ext->>Pallet: Calculate worst-case fee
+    rect rgb(40, 50, 60)
+        Note over Ext, Balances: 2. PREPARE (Reservation)
+        Ext->>Pallet: move_budget_to_pending(worst_case_fee)
         Pallet->>Balances: release(SponsorshipBudget, worst_case_fee)
         Balances-->>Pallet: Ok
         Pallet->>Balances: hold(SponsorshipPending, worst_case_fee)
@@ -26,13 +29,13 @@ sequenceDiagram
     end
 
     rect rgb(45, 55, 40)
-        Note over Node, Exec: 2. DISPATCH (Execution)
+        Note over Node, Exec: 3. DISPATCH (Execution)
         Node->>Exec: Execute Extrinsic Logic
         Exec-->>Node: Return Actual Consumed Weight / PostDispatchInfo
     end
 
     rect rgb(55, 45, 40)
-        Note over Node, Dest: 3. POST-DISPATCH (Settlement & Refund)
+        Note over Node, Dest: 4. POST-DISPATCH (Settlement & Refund)
         Node->>Ext: post_dispatch(Actual Weight)
         Ext->>Pallet: Calculate actual fee consumed
 
